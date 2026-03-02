@@ -2,62 +2,310 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#7c3aed">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="12rail">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="manifest" href="/manifest.json">
   <title>12rail - Schnellste Zugverbindungen</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #1a1a2e, #16213e); min-height: 100vh; color: #fff; }
-    .container { max-width: 800px; margin: 0 auto; padding: 20px; }
+    .container { max-width: 900px; margin: 0 auto; padding: 20px; }
     header { text-align: center; padding: 40px 0; }
     h1 { font-size: 3rem; background: linear-gradient(90deg, #00d4ff, #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
     .search-box { background: rgba(255,255,255,0.1); border-radius: 20px; padding: 30px; backdrop-filter: blur(10px); }
     .search-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 15px; }
-    input { padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.1); color: #fff; font-size: 1rem; }
+    .input-group { position: relative; }
+    input { 
+      padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2); 
+      background: rgba(255,255,255,0.1); color: #fff; font-size: 1rem; width: 100%; 
+    }
     input::placeholder { color: #64748b; }
+    .suggestions {
+      position: absolute; top: 100%; left: 0; right: 0; background: #1a1a2e; 
+      border-radius: 12px; margin-top: 5px; max-height: 200px; overflow-y: auto; 
+      z-index: 1000; display: none; border: 1px solid rgba(255,255,255,0.2);
+    }
+    .suggestions.show { display: block; }
+    .suggestion { padding: 12px 15px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.1); }
+    .suggestion:hover { background: rgba(255,255,255,0.1); }
+    .suggestion:last-child { border-bottom: none; }
     button { padding: 15px 40px; border-radius: 12px; border: none; background: linear-gradient(90deg, #00d4ff, #7c3aed); color: white; font-weight: 600; cursor: pointer; }
     button:hover { transform: translateY(-2px); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
     .results { margin-top: 30px; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 15px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.1); }
-    th { color: #94a3b8; text-transform: uppercase; font-size: 0.85rem; }
-    .duration { color: #00d4ff; font-weight: 700; }
-    .loading, .no-results { text-align: center; padding: 40px; color: #94a3b8; }
+    .connection { background: rgba(255,255,255,0.05); border-radius: 15px; padding: 20px; margin-bottom: 15px; }
+    .connection-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+    .duration { color: #00d4ff; font-weight: 700; font-size: 1.2rem; }
+    .transfers { color: #f59e0b; font-size: 0.9rem; }
+    .segments { border-left: 2px solid #7c3aed; padding-left: 20px; margin-left: 10px; }
+    .segment { padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.1); }
+    .segment:last-child { border-bottom: none; }
+    .segment-header { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .transport-badge { background: #7c3aed; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; }
+    .time { font-weight: 600; }
+    .station { color: #94a3b8; }
+    .arrow { color: #64748b; }
+    .platform { color: #64748b; font-size: 0.85rem; }
+    .loading, .no-results, .error { text-align: center; padding: 40px; color: #94a3b8; }
+    .error { color: #ef4444; }
+    .favorites-section { margin-top: 20px; }
+    .favorites-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .favorites-title { color: #94a3b8; font-size: 0.9rem; }
+    .favorite-btn { background: transparent; border: 1px solid #7c3aed; padding: 8px 15px; font-size: 0.9rem; }
+    .favorite-btn:hover { background: #7c3aed; }
+    .favorites-list { display: flex; flex-wrap: wrap; gap: 10px; }
+    .favorite-chip { background: rgba(255,255,255,0.1); padding: 8px 15px; border-radius: 20px; font-size: 0.9rem; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+    .favorite-chip:hover { background: rgba(255,255,255,0.2); }
+    .favorite-chip .delete { color: #ef4444; margin-left: 5px; }
+    .favorite-chip .delete:hover { color: #f87171; }
+    @media (max-width: 768px) {
+      .search-form { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
   <div class="container">
-    <header><h1>🚂 12rail</h1><p>Finde die schnellsten Zugverbindungen in Europa</p></header>
+    <header>
+      <h1>🚂 12rail</h1>
+      <p>Echtzeit-Zugverbindungen in Europa</p>
+    </header>
     <div class="search-box">
+      <div class="favorites-section" id="favoritesSection" style="display:none;">
+        <div class="favorites-header">
+          <span class="favorites-title">⭐ Gespeicherte Strecken</span>
+        </div>
+        <div class="favorites-list" id="favoritesList"></div>
+      </div>
       <form class="search-form" id="searchForm">
-        <input type="text" id="from" placeholder="Von (z.B. Berlin)" required>
-        <input type="text" id="to" placeholder="Nach (z.B. Paris)" required>
-        <button type="submit">Suchen</button>
+        <div class="input-group">
+          <input type="text" id="from" placeholder="Von (z.B. Berlin, Hamburg Hbf)" autocomplete="off" required>
+          <div class="suggestions" id="fromSuggestions"></div>
+        </div>
+        <div class="input-group">
+          <input type="text" id="to" placeholder="Nach (z.B. München, Wien)" autocomplete="off" required>
+          <div class="suggestions" id="toSuggestions"></div>
+        </div>
+        <div class="input-group" style="grid-column: 1 / -1; display: flex; gap: 10px; flex-wrap: wrap;">
+          <input type="date" id="date" required>
+          <input type="time" id="time" value="00:00">
+          <button type="button" id="saveFavoriteBtn" class="favorite-btn" style="display: none;">⭐ Speichern</button>
+        </div>
+        <button type="submit" id="searchBtn">Suchen</button>
       </form>
     </div>
-    <div class="results" id="results" style="display:none;">
-      <table><thead><tr><th>#</th><th>Verbindung</th><th>Dauer</th><th>Transport</th><th>Abfahrt</th><th>Ankunft</th></tr></thead><tbody id="resultsBody"></tbody></table>
-    </div>
-    <div class="loading" id="loading" style="display:none;">🔍 Suche...</div>
-    <div class="no-results" id="noResults" style="display:none;">Keine Ergebnisse</div>
+    <div class="results" id="results" style="display:none;"></div>
+    <div class="loading" id="loading" style="display:none;">🔍 Suche Verbindungen...</div>
+    <div class="no-results" id="noResults" style="display:none;">Keine Verbindungen gefunden</div>
+    <div class="error" id="error" style="display:none;"></div>
   </div>
+
   <script>
+    // Set default date to today
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('date').value = today;
+
+    const fromInput = document.getElementById('from');
+    const toInput = document.getElementById('to');
+    const fromSuggestions = document.getElementById('fromSuggestions');
+    const toSuggestions = document.getElementById('toSuggestions');
+    let debounceTimer;
+
+    // Station search with debounce
+    async function searchStations(query, suggestionsEl) {
+      if (query.length < 2) {
+        suggestionsEl.classList.remove('show');
+        return;
+      }
+      
+      try {
+        const res = await fetch(`/api/stations?search=${encodeURIComponent(query)}`);
+        const stations = await res.json();
+        
+        if (stations.length > 0) {
+          suggestionsEl.innerHTML = stations.map(s => 
+            `<div class="suggestion" data-id="${s.id}" data-name="${s.name}">${s.name}</div>`
+          ).join('');
+          suggestionsEl.classList.add('show');
+        } else {
+          suggestionsEl.classList.remove('show');
+        }
+      } catch (e) {
+        suggestionsEl.classList.remove('show');
+      }
+    }
+
+    // Event listeners for autocomplete
+    fromInput.addEventListener('input', (e) => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => searchStations(e.target.value, fromSuggestions), 300);
+    });
+
+    toInput.addEventListener('input', (e) => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => searchStations(e.target.value, toSuggestions), 300);
+    });
+
+    // Click on suggestion
+    [fromSuggestions, toSuggestions].forEach((el, idx) => {
+      el.addEventListener('click', (e) => {
+        if (e.target.classList.contains('suggestion')) {
+          const input = idx === 0 ? fromInput : toInput;
+          input.value = e.target.dataset.name;
+          el.classList.remove('show');
+        }
+      });
+    });
+
+    // Hide suggestions when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.input-group')) {
+        fromSuggestions.classList.remove('show');
+        toSuggestions.classList.remove('show');
+      }
+    });
+
+    // Search form submit
     document.getElementById('searchForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const from = document.getElementById('from').value;
-      const to = document.getElementById('to').value;
+      const from = fromInput.value;
+      const to = toInput.value;
+      const date = document.getElementById('date').value;
+      const time = document.getElementById('time').value;
+      
+      // Enable save button if both fields have values
+      const saveBtn = document.getElementById('saveFavoriteBtn');
+      if (from && to) {
+        saveBtn.style.display = 'inline-block';
+        saveBtn.onclick = () => saveFavorite(from, to);
+      }
+      
+      let url = `/api/search?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+      if (date) {
+        url += `&date=${date}`;
+        if (time) url += `&time=${time}`;
+      }
+      
       document.getElementById('results').style.display = 'none';
       document.getElementById('noResults').style.display = 'none';
+      document.getElementById('error').style.display = 'none';
       document.getElementById('loading').style.display = 'block';
+      
       try {
-        const res = await fetch(`/api/search?from=${from}&to=${to}`);
+        const res = await fetch(url);
         const data = await res.json();
         document.getElementById('loading').style.display = 'none';
+        
+        if (data.error) {
+          document.getElementById('error').textContent = data.error;
+          document.getElementById('error').style.display = 'block';
+          return;
+        }
+        
         if (data.connections?.length) {
-          document.getElementById('resultsBody').innerHTML = data.connections.map(c => `<tr><td>${c.id}</td><td>${c.from} → ${c.to}</td><td class="duration">${c.duration}</td><td>${c.transport}</td><td>${c.departure}</td><td>${c.arrival}</td></tr>`).join('');
+          let html = '';
+          data.connections.forEach(conn => {
+            html += `
+              <div class="connection">
+                <div class="connection-header">
+                  <span class="duration">${conn.totalDuration}</span>
+                  <span class="transfers">${conn.transfers}</span>
+                </div>
+                <div class="segments">
+                  ${conn.segments.map(seg => `
+                    <div class="segment">
+                      <div class="segment-header">
+                        <span class="transport-badge">${seg.transport} ${seg.line}</span>
+                        <span class="time">${seg.departure}</span>
+                        <span class="arrow">→</span>
+                        <span class="station">${seg.from}</span>
+                        <span class="arrow">→</span>
+                        <span class="station">${seg.to}</span>
+                        <span class="time">${seg.arrival}</span>
+                        ${seg.platform ? `<span class="platform">Gl. ${seg.platform}</span>` : ''}
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            `;
+          });
+          document.getElementById('results').innerHTML = html;
           document.getElementById('results').style.display = 'block';
-        } else { document.getElementById('noResults').style.display = 'block'; }
-      } catch { document.getElementById('loading').style.display = 'none'; document.getElementById('noResults').style.display = 'block'; }
+        } else {
+          document.getElementById('noResults').style.display = 'block';
+        }
+      } catch (err) {
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('error').textContent = 'Fehler: ' + err.message;
+        document.getElementById('error').style.display = 'block';
+      }
     });
+
+    // Favorites functionality
+    const FAVORITES_KEY = '12rail_favorites';
+    
+    function getFavorites() {
+      try {
+        return JSON.parse(localStorage.getItem(FAVORITES_KEY)) || [];
+      } catch {
+        return [];
+      }
+    }
+    
+    function saveFavorite(from, to) {
+      const favorites = getFavorites();
+      const key = `${from}|${to}`;
+      
+      if (!favorites.find(f => f.key === key)) {
+        favorites.push({ key, from, to });
+        localStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites));
+        renderFavorites();
+      }
+    }
+    
+    function deleteFavorite(key) {
+      const favorites = getFavorites().filter(f => f.key !== key);
+      localStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites));
+      renderFavorites();
+    }
+    
+    function renderFavorites() {
+      const favorites = getFavorites();
+      const section = document.getElementById('favoritesSection');
+      const list = document.getElementById('favoritesList');
+      
+      if (favorites.length === 0) {
+        section.style.display = 'none';
+        return;
+      }
+      
+      section.style.display = 'block';
+      list.innerHTML = favorites.map(f => `
+        <div class="favorite-chip" onclick="loadFavorite('${f.from}', '${f.to}')">
+          ${f.from} → ${f.to}
+          <span class="delete" onclick="event.stopPropagation(); deleteFavorite('${f.key}')">✕</span>
+        </div>
+      `).join('');
+    }
+    
+    function loadFavorite(from, to) {
+      fromInput.value = from;
+      toInput.value = to;
+    }
+    
+    // Initialize favorites on page load
+    renderFavorites();
+
+    // Register Service Worker for PWA
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js')
+        .then((reg) => console.log('SW registered:', reg.scope))
+        .catch((err) => console.log('SW registration failed:', err));
+    }
   </script>
 </body>
 </html>
