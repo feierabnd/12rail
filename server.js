@@ -315,9 +315,20 @@ app.get('/api/search', async (req, res) => {
     res.json({ connections });
   } catch (error) {
     console.error('API Error:', error.message);
+    
+    // Better error messages
+    let userMessage = 'API temporarily unavailable. Please try again later.';
+    if (error.response?.status === 503) {
+      userMessage = 'DB API überlastet (503). Bitte warte einen Moment und versuche es erneut.';
+    } else if (error.response?.status === 429) {
+      userMessage = 'Zu viele Anfragen. Bitte warte kurz.';
+    } else if (error.code === 'ECONNABORTED') {
+      userMessage = 'Zeitüberschreitung. Bitte versuche es erneut.';
+    }
+    
     res.json({ 
       connections: [], 
-      message: 'API temporarily unavailable. Please try again later.',
+      message: userMessage,
       error: error.message
     });
   }
