@@ -203,7 +203,7 @@ app.get('/api/search', async (req, res) => {
     try {
       response = await fetchWithRetry(async () => {
         return await axios.get(
-          `https://v6.db.transport.rest/journeys?from=${fromStation.id}&to=${toStation.id}&results=10${departureParam}`,
+          `https://v6.db.transport.rest/journeys?from=${fromStation.id}&to=${toStation.id}&results=10&stopovers=true${departureParam}`,
           { timeout: 30000 }
         );
       });
@@ -213,7 +213,7 @@ app.get('/api/search', async (req, res) => {
         console.log('Scheduled query failed, retrying without date...');
         response = await fetchWithRetry(async () => {
           return await axios.get(
-            `https://v6.db.transport.rest/journeys?from=${fromStation.id}&to=${toStation.id}&results=10`,
+            `https://v6.db.transport.rest/journeys?from=${fromStation.id}&to=${toStation.id}&results=10&stopovers=true`,
             { timeout: 30000 }
           );
         });
@@ -242,6 +242,21 @@ app.get('/api/search', async (req, res) => {
         const departureDelay = leg.departureDelay || 0;
         const arrivalDelay = leg.arrivalDelay || 0;
         
+        // Extract all stop coordinates for detailed route
+        const routeCoords = [];
+        if (leg.stopovers && Array.isArray(leg.stopovers)) {
+          leg.stopovers.forEach(stop => {
+            if (stop.stop?.location) {
+              routeCoords.push([stop.stop.location.latitude, stop.stop.location.longitude]);
+            }
+          });
+        }
+        // Fallback to just origin/destination if no stopovers
+        if (routeCoords.length === 0) {
+          if (leg.origin?.location) routeCoords.push([leg.origin.location.latitude, leg.origin.location.longitude]);
+          if (leg.destination?.location) routeCoords.push([leg.destination.location.latitude, leg.destination.location.longitude]);
+        }
+        
         // Format delay for display
         const formatDelay = (mins) => {
           if (mins <= 0) return '';
@@ -261,6 +276,7 @@ app.get('/api/search', async (req, res) => {
           to: leg.destination?.name || '',
           fromCoords: leg.origin?.location ? [leg.origin.location.latitude, leg.origin.location.longitude] : null,
           toCoords: leg.destination?.location ? [leg.destination.location.latitude, leg.destination.location.longitude] : null,
+          routeCoords,
           departure,
           arrival,
           plannedDeparture,
