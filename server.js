@@ -234,7 +234,13 @@ app.get('/api/search', async (req, res) => {
       const segments = legs.map((leg, i) => {
         const departure = leg.departure ? leg.departure.split('T')[1].substring(0, 5) : 'N/A';
         const arrival = leg.arrival ? leg.arrival.split('T')[1].substring(0, 5) : 'N/A';
+        const plannedDeparture = leg.plannedDeparture ? leg.plannedDeparture.split('T')[1].substring(0, 5) : departure;
+        const plannedArrival = leg.plannedArrival ? leg.plannedArrival.split('T')[1].substring(0, 5) : arrival;
         const duration = calculateDuration(departure, arrival);
+        
+        // Calculate delays
+        const departureDelay = leg.departureDelay || 0;
+        const arrivalDelay = leg.arrivalDelay || 0;
         
         return {
           number: i + 1,
@@ -244,6 +250,10 @@ app.get('/api/search', async (req, res) => {
           to: leg.destination?.name || '',
           departure,
           arrival,
+          plannedDeparture,
+          plannedArrival,
+          departureDelay,
+          arrivalDelay,
           duration,
           platform: leg.departurePlatform || leg.plannedDeparturePlatform || ''
         };

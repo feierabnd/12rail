@@ -41,12 +41,16 @@
     .connection-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
     .duration { color: #00d4ff; font-weight: 700; font-size: 1.2rem; }
     .transfers { color: #f59e0b; font-size: 0.9rem; }
+    .total-delay { color: #ef4444; font-weight: 600; font-size: 0.9rem; }
+    .connection.has-delay { border-left: 3px solid #ef4444; }
     .segments { border-left: 2px solid #7c3aed; padding-left: 20px; margin-left: 10px; }
     .segment { padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.1); }
     .segment:last-child { border-bottom: none; }
     .segment-header { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
     .transport-badge { background: #7c3aed; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; }
     .time { font-weight: 600; }
+    .time.delayed { color: #ef4444; }
+    .delay { color: #ef4444; font-size: 0.85rem; font-weight: 700; }
     .station { color: #94a3b8; }
     .arrow { color: #64748b; }
     .platform { color: #64748b; font-size: 0.85rem; }
@@ -208,10 +212,15 @@
         if (data.connections?.length) {
           let html = '';
           data.connections.forEach(conn => {
+            // Calculate total delay
+            const totalDepartureDelay = conn.segments[0]?.departureDelay || 0;
+            const totalArrivalDelay = conn.segments[conn.segments.length - 1]?.arrivalDelay || 0;
+            
             html += `
-              <div class="connection">
+              <div class="connection${totalDepartureDelay > 0 || totalArrivalDelay > 0 ? ' has-delay' : ''}">
                 <div class="connection-header">
                   <span class="duration">${conn.totalDuration}</span>
+                  ${totalArrivalDelay > 0 ? `<span class="total-delay">+${totalArrivalDelay} min Verspätung</span>` : ''}
                   <span class="transfers">${conn.transfers}</span>
                 </div>
                 <div class="segments">
@@ -219,12 +228,12 @@
                     <div class="segment">
                       <div class="segment-header">
                         <span class="transport-badge">${seg.transport} ${seg.line}</span>
-                        <span class="time">${seg.departure}</span>
+                        <span class="time${seg.departureDelay > 0 ? ' delayed' : ''}">${seg.departure}${seg.departureDelay > 0 ? ` <span class="delay">+${seg.departureDelay}'</span>` : ''}</span>
                         <span class="arrow">→</span>
                         <span class="station">${seg.from}</span>
                         <span class="arrow">→</span>
                         <span class="station">${seg.to}</span>
-                        <span class="time">${seg.arrival}</span>
+                        <span class="time${seg.arrivalDelay > 0 ? ' delayed' : ''}">${seg.arrival}${seg.arrivalDelay > 0 ? ` <span class="delay">+${seg.arrivalDelay}'</span>` : ''}</span>
                         ${seg.platform ? `<span class="platform">Gl. ${seg.platform}</span>` : ''}
                       </div>
                     </div>
