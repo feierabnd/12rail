@@ -9,6 +9,8 @@
   <meta name="apple-mobile-web-app-title" content="12rail">
   <meta name="mobile-web-app-capable" content="yes">
   <link rel="manifest" href="/manifest.json">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <title>12rail - Schnellste Zugverbindungen</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -43,6 +45,9 @@
     .transfers { color: #f59e0b; font-size: 0.9rem; }
     .total-delay { color: #ef4444; font-weight: 600; font-size: 0.9rem; }
     .connection.has-delay { border-left: 3px solid #ef4444; }
+    .map-btn { padding: 5px 12px; font-size: 0.8rem; background: rgba(124, 58, 237, 0.3); border: 1px solid #7c3aed; }
+    .map-btn:hover { background: rgba(124, 58, 237, 0.5); }
+    .map-container { height: 300px; margin: 15px 0; border-radius: 10px; overflow: hidden; }
     .segments { border-left: 2px solid #7c3aed; padding-left: 20px; margin-left: 10px; }
     .segment { padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.1); }
     .segment:last-child { border-bottom: none; }
@@ -215,25 +220,39 @@
             // Calculate total delay
             const totalDepartureDelay = conn.segments[0]?.departureDelay || 0;
             const totalArrivalDelay = conn.segments[conn.segments.length - 1]?.arrivalDelay || 0;
+            const formatTotalDelay = (mins) => {
+              if (mins <= 0) return '';
+              if (mins >= 60) {
+                const h = Math.floor(mins / 60);
+                const m = mins % 60;
+                return m > 0 ? `+${h}h ${m}min` : `+${h}h`;
+              }
+              return `+${mins} min`;
+            };
+            
+            // Collect all coordinates for map
+            const allCoords = conn.segments.flatMap(seg => [seg.fromCoords, seg.toCoords]).filter(Boolean);
             
             html += `
-              <div class="connection${totalDepartureDelay > 0 || totalArrivalDelay > 0 ? ' has-delay' : ''}">
+              <div class="connection${totalDepartureDelay > 0 || totalArrivalDelay > 0 ? ' has-delay' : ''}" data-coords='${JSON.stringify(allCoords)}'>
                 <div class="connection-header">
                   <span class="duration">${conn.totalDuration}</span>
-                  ${totalArrivalDelay > 0 ? `<span class="total-delay">+${totalArrivalDelay} min Verspätung</span>` : ''}
+                  ${totalArrivalDelay > 0 ? `<span class="total-delay">${formatTotalDelay(totalArrivalDelay)} Verspätung</span>` : ''}
                   <span class="transfers">${conn.transfers}</span>
+                  <button class="map-btn" onclick="toggleMap(this)">🗺️ Karte</button>
                 </div>
+                <div class="map-container" style="display:none;"></div>
                 <div class="segments">
                   ${conn.segments.map(seg => `
                     <div class="segment">
                       <div class="segment-header">
                         <span class="transport-badge">${seg.transport} ${seg.line}</span>
-                        <span class="time${seg.departureDelay > 0 ? ' delayed' : ''}">${seg.departure}${seg.departureDelay > 0 ? ` <span class="delay">+${seg.departureDelay}'</span>` : ''}</span>
+                        <span class="time${seg.departureDelay > 0 ? ' delayed' : ''}">${seg.departure}${seg.departureDelay > 0 ? ` <span class="delay">${seg.departureDelayFormatted}</span>` : ''}</span>
                         <span class="arrow">→</span>
                         <span class="station">${seg.from}</span>
                         <span class="arrow">→</span>
                         <span class="station">${seg.to}</span>
-                        <span class="time${seg.arrivalDelay > 0 ? ' delayed' : ''}">${seg.arrival}${seg.arrivalDelay > 0 ? ` <span class="delay">+${seg.arrivalDelay}'</span>` : ''}</span>
+                        <span class="time${seg.arrivalDelay > 0 ? ' delayed' : ''}">${seg.arrival}${seg.arrivalDelay > 0 ? ` <span class="delay">${seg.arrivalDelayFormatted}</span>` : ''}</span>
                         ${seg.platform ? `<span class="platform">Gl. ${seg.platform}</span>` : ''}
                       </div>
                     </div>
@@ -308,6 +327,48 @@
     
     // Initialize favorites on page load
     renderFavorites();
+    
+    // Map toggle function
+    function toggleMap(btn) {
+      const connection = btn.closest('.connection');
+      const mapContainer = connection.querySelector('.map-container');
+      
+      if (mapContainer.style.display === 'none') {
+        mapContainer.style.display = 'block';
+        btn.textContent = '🗺️ Ausblenden';
+        
+        // Get coordinates
+        const coords = JSON.parse(connection.dataset.coords || '[]');
+        if (coords.length < 2) {
+          mapContainer.innerHTML = '<p style="padding:20px;color:#94a3b8;">Keine Koordinaten verfügbar</p>';
+          return;
+        }
+        
+        // Create unique map ID
+        const mapId = 'map-' + Math.random().toString(36).substr(2, 9);
+        mapContainer.innerHTML = `<div id="${mapId}" style="height:100%;width:100%;"></div>`;
+        
+        // Initialize Leaflet map
+        const map = L.map(mapId).setView(coords[0], 8);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© OpenStreetMap'
+        }).addTo(map);
+        
+        // Draw route line and markers
+        const routeLine = coords.map(c => [c[0], c[1]]);
+        L.polyline(routeLine, { color: '#7c3aed', weight: 4, opacity: 0.8 }).addTo(map);
+        
+        // Add markers for start and end
+        L.marker(coords[0]).addTo(map).bindPopup('Start');
+        L.marker(coords[coords.length - 1]).addTo(map).bindPopup('Ziel');
+        
+        // Fit bounds to show entire route
+        map.fitBounds(routeLine, { padding: [30, 30] });
+      } else {
+        mapContainer.style.display = 'none';
+        btn.textContent = '🗺️ Karte';
+      }
+    }
 
     // Register Service Worker for PWA
     if ('serviceWorker' in navigator) {

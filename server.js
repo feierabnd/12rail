@@ -242,18 +242,33 @@ app.get('/api/search', async (req, res) => {
         const departureDelay = leg.departureDelay || 0;
         const arrivalDelay = leg.arrivalDelay || 0;
         
+        // Format delay for display
+        const formatDelay = (mins) => {
+          if (mins <= 0) return '';
+          if (mins >= 60) {
+            const h = Math.floor(mins / 60);
+            const m = mins % 60;
+            return m > 0 ? `+${h}h ${m}'` : `+${h}h`;
+          }
+          return `+${mins}'`;
+        };
+        
         return {
           number: i + 1,
           transport: leg.line?.productName || leg.line?.name || 'Train',
           line: leg.line?.name || '',
           from: leg.origin?.name || '',
           to: leg.destination?.name || '',
+          fromCoords: leg.origin?.location ? [leg.origin.location.latitude, leg.origin.location.longitude] : null,
+          toCoords: leg.destination?.location ? [leg.destination.location.latitude, leg.destination.location.longitude] : null,
           departure,
           arrival,
           plannedDeparture,
           plannedArrival,
           departureDelay,
           arrivalDelay,
+          departureDelayFormatted: formatDelay(departureDelay),
+          arrivalDelayFormatted: formatDelay(arrivalDelay),
           duration,
           platform: leg.departurePlatform || leg.plannedDeparturePlatform || ''
         };
