@@ -1,6 +1,7 @@
 const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
+const Cache = require('./cache');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -8,10 +9,6 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
-
-// In-memory cache
-const cache = new Map();
-const CACHE_TTL = 60 * 1000; // 1 minute
 
 // European station codes database
 const stationCodes = {
@@ -62,18 +59,22 @@ function getStationId(city) {
   return stationCodes[key] || null;
 }
 
+// In-memory cache for short-term caching (stations, etc.)
+const memoryCache = new Map();
+const CACHE_TTL = 60 * 1000; // 1 minute
+
 // Cache helper
 function getCached(key) {
-  const data = cache.get(key);
+  const data = memoryCache.get(key);
   if (data && Date.now() - data.timestamp < CACHE_TTL) {
     return data.value;
   }
-  cache.delete(key);
+  memoryCache.delete(key);
   return null;
 }
 
 function setCache(key, value) {
-  cache.set(key, { value, timestamp: Date.now() });
+  memoryCache.set(key, { value, timestamp: Date.now() });
 }
 
 // Retry helper with exponential backoff
@@ -186,6 +187,9 @@ app.get('/api/search', async (req, res) => {
     });
   }
 
+  // Check SQLite cache first
+  const cachedJourneys = Cache.getCachedRoute(fromStation.id, toStation.id);
+  
   // Build departure time parameter
   let departureParam = '';
   let useScheduled = false;
@@ -207,6 +211,11 @@ app.get('/api/search', async (req, res) => {
           { timeout: 30000 }
         );
       });
+      
+      // Cache successful response
+      if (response.data.journeys?.length > 0 && !useScheduled) {
+        Cache.cacheRoute(fromStation.id, toStation.id, fromStation.name, toStation.name, response.data.journeys);
+      }
     } catch (scheduledError) {
       // If scheduled query fails, retry without date/time
       if (useScheduled && (scheduledError.response?.status >= 500 || scheduledError.response?.status === 429)) {
@@ -217,6 +226,10 @@ app.get('/api/search', async (req, res) => {
             { timeout: 30000 }
           );
         });
+      } else if (cachedJourneys) {
+        // Fallback to cache
+        console.log('API failed, using cached data');
+        response = { data: { journeys: cachedJourneys } };
       } else {
         throw scheduledError;
       }
@@ -380,7 +393,7 @@ app.get('/api/stations', async (req, res) => {
 });
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', cache: cache.size, uptime: process.uptime() });
+  res.json({ status: 'ok', memoryCache: memoryCache.size, uptime: process.uptime() });
 });
 
 app.listen(PORT, '0.0.0.0', () => {
